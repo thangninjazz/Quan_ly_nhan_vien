@@ -1,0 +1,294 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  code      String   @unique
+  subdomain String?  @unique
+  logoUrl   String?
+  gpsConfig String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branches      Branch[]
+  departments   Department[]
+  employees     Employee[]
+  productTypes  ProductType[]
+  pieceRates    PieceRate[]
+  payrollRuns   PayrollRun[]
+  refreshTokens RefreshToken[]
+  roles         Role[]
+}
+
+model Branch {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  name      String
+  address   String?
+  location  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employees Employee[]
+
+  @@index([companyId])
+}
+
+model Department {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  name      String
+  parentId  String?
+  parent    Department?  @relation("DeptToDept", fields: [parentId], references: [id])
+  children  Department[] @relation("DeptToDept")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employees Employee[]
+
+  @@index([companyId])
+}
+
+model Employee {
+  id        String  @id @default(uuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+
+  branchId String?
+  branch   Branch? @relation(fields: [branchId], references: [id])
+
+  deptId String?
+  dept   Department? @relation(fields: [deptId], references: [id])
+
+  code      String?
+  fullName  String
+  email     String?
+  phone     String?
+  isActive  Boolean  @default(true)
+  joinedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user              User?
+  productionEntries ProductionEntry[]
+  allowances        EmployeeAllowance[]
+  payrollLines      PayrollLine[]
+
+  @@index([companyId])
+}
+
+model User {
+  id           String   @id @default(uuid())
+  employeeId   String?  @unique
+  employee     Employee? @relation(fields: [employeeId], references: [id])
+  username     String   @unique
+  passwordHash String
+  isSuperAdmin Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  roles         UserRole[]
+  refreshTokens RefreshToken[]
+}
+
+model Role {
+  id        String  @id @default(uuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  permissions RolePermission[]
+  userRoles   UserRole[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model Permission {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  createdAt DateTime @default(now())
+
+  roles RolePermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id])
+
+  @@id([roleId, permissionId])
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   User @relation(fields: [userId], references: [id])
+  role   Role @relation(fields: [roleId], references: [id])
+
+  @@id([userId, roleId])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  tokenHash String   @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([companyId, userId])
+  @@index([expiresAt])
+}
+
+model ProductType {
+  id        String  @id @default(uuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+  name      String
+  unit      String  @default("pcs")
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rates   PieceRate[]
+  entries ProductionEntry[]
+  payrollLineItems PayrollLineItem[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model PieceRate {
+  id            String      @id @default(uuid())
+  companyId     String
+  company       Company     @relation(fields: [companyId], references: [id])
+  productTypeId String
+  productType   ProductType @relation(fields: [productTypeId], references: [id])
+  rateVnd       Int
+  effectiveFrom DateTime
+  createdAt     DateTime    @default(now())
+
+  @@unique([companyId, productTypeId, effectiveFrom])
+  @@index([companyId, productTypeId, effectiveFrom(sort: Desc)])
+}
+
+// EntryStatus moved to String for SQLite compatibility
+
+model ProductionEntry {
+  id            String      @id @default(uuid())
+  companyId     String
+  employeeId    String
+  employee      Employee    @relation(fields: [employeeId], references: [id])
+  productTypeId String
+  productType   ProductType @relation(fields: [productTypeId], references: [id])
+  quantity      Int
+  workDate      DateTime
+  evidenceUrl   String?
+  status        String @default("DRAFT")
+  note          String?
+
+  submittedAt  DateTime?
+  approvedBy   String?
+  approvedAt   DateTime?
+  rejectReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, employeeId, workDate, productTypeId])
+  @@index([companyId, workDate])
+  @@index([companyId, employeeId, workDate])
+}
+
+model EmployeeAllowance {
+  id            String   @id @default(uuid())
+  companyId     String
+  employeeId    String
+  employee      Employee @relation(fields: [employeeId], references: [id])
+  name          String
+  amountVnd     Int
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([companyId, employeeId, effectiveFrom])
+}
+
+// PayrollStatus moved to String for SQLite compatibility
+
+model PayrollRun {
+  id           String       @id @default(uuid())
+  companyId    String
+  company      Company      @relation(fields: [companyId], references: [id])
+  month        Int
+  year         Int
+  status       String @default("DRAFT")
+  totalAmount  Int          @default(0)
+  calculatedAt DateTime?
+  lockedAt     DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  lines PayrollLine[]
+
+  @@unique([companyId, year, month])
+  @@index([companyId, year, month])
+}
+
+model PayrollLine {
+  id           String     @id @default(uuid())
+  companyId    String
+  payrollRunId String
+  payrollRun   PayrollRun @relation(fields: [payrollRunId], references: [id])
+  employeeId   String
+  employee     Employee   @relation(fields: [employeeId], references: [id])
+
+  productionPay Int @default(0)
+  allowancePay  Int @default(0)
+  totalPay      Int @default(0)
+
+  metadata  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items PayrollLineItem[]
+
+  @@unique([companyId, payrollRunId, employeeId])
+  @@index([companyId, payrollRunId])
+}
+
+model PayrollLineItem {
+  id             String     @id @default(uuid())
+  companyId      String
+  payrollLineId  String
+  payrollLine    PayrollLine @relation(fields: [payrollLineId], references: [id])
+  productTypeId  String
+  productType    ProductType @relation(fields: [productTypeId], references: [id])
+
+  quantityTotal     Int
+  rateEffectiveFrom DateTime
+  rateVnd           Int
+  amountVnd         Int
+
+  createdAt DateTime @default(now())
+
+  @@index([companyId, payrollLineId])
+}
